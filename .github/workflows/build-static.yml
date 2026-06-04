@@ -1,0 +1,77 @@
+name: Build Static Files
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build project
+        run: pnpm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-files
+          path: docs/
+          retention-days: 7
+
+      - name: Set release variables
+        if: github.event_name != 'pull_request'
+        id: release_vars
+        shell: bash
+        run: |
+          BUILD_DATE=$(TZ=Asia/Shanghai date +"%Y%m%d-%H%M%S")
+          RELEASE_NAME="taoyuan-${BUILD_DATE}"
+          FILE_NAME="${RELEASE_NAME}.zip"
+
+          echo "build_date=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "file_name=${FILE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Package static files
+        if: github.event_name != 'pull_request'
+        run: |
+          cd docs
+          zip -r "../${{ steps.release_vars.outputs.file_name }}" .
+
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ steps.release_vars.outputs.release_name }}
+          FILE_NAME: ${{ steps.release_vars.outputs.file_name }}
+        run: |
+          gh release create "$RELEASE_NAME" "$FILE_NAME" \
+            --title "$RELEASE_NAME" \
+            --notes "Static files built from main branch at $RELEASE_NAME."

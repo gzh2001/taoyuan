@@ -2,3 +2,4 @@ ignoredBuiltDependencies:
   - electron
   - electron-winstaller
   - esbuild
+  - core-js
